@@ -59,9 +59,16 @@ func (c *Client) AssumeRole(ctx context.Context, assumeRoleConfig *AssumeRoleCon
 		stsClient = sts.NewFromConfig(c.awsConfig)
 	}
 
+	// Log the role ARN being assumed
+	fmt.Printf("Attempting to assume role: %s\n", assumeRoleConfig.RoleArn)
+
 	input := &sts.AssumeRoleInput{
-		RoleArn:         aws.String(assumeRoleConfig.RoleArn),
-		RoleSessionName: aws.String(assumeRoleConfig.SessionName),
+		RoleArn: aws.String(assumeRoleConfig.RoleArn),
+	}
+
+	// Only set session name if provided
+	if assumeRoleConfig.SessionName != "" {
+		input.RoleSessionName = aws.String(assumeRoleConfig.SessionName)
 	}
 
 	if assumeRoleConfig.ExternalId != "" {
@@ -103,8 +110,11 @@ func (c *Client) AssumeRole(ctx context.Context, assumeRoleConfig *AssumeRoleCon
 
 	result, err := stsClient.AssumeRole(ctx, input)
 	if err != nil {
-		return fmt.Errorf("failed to assume role: %w", err)
+		return fmt.Errorf("failed to assume role: %w\n\nThis could be due to:\n1. Invalid role ARN\n2. Missing trust relationship\n3. Insufficient permissions to assume the role\n4. Invalid external ID (if required)\n5. Invalid session name\n\nPlease check your role configuration and permissions.", err)
 	}
+
+	// Log successful role assumption
+	fmt.Printf("Successfully assumed role. Session name: %s\n", aws.ToString(result.AssumedRoleUser.Arn))
 
 	// Update the client's credentials with the assumed role credentials
 	c.awsConfig.Credentials = credentials.NewStaticCredentialsProvider(
@@ -125,6 +135,13 @@ func (c *Client) GetAccountInfo(ctx context.Context) ([]AccountInfo, error) {
 		orgClient = organizations.NewFromConfig(c.awsConfig)
 	}
 
+	// Log the current credentials being used
+	creds, err := c.awsConfig.Credentials.Retrieve(context.TODO())
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve credentials: %w", err)
+	}
+	fmt.Printf("Using credentials for access key: %s\n", creds.AccessKeyID)
+
 	var accounts []AccountInfo
 	var nextToken *string
 
@@ -135,7 +152,7 @@ func (c *Client) GetAccountInfo(ctx context.Context) ([]AccountInfo, error) {
 
 		result, err := orgClient.ListAccounts(ctx, input)
 		if err != nil {
-			return nil, fmt.Errorf("failed to list accounts: %w", err)
+			return nil, fmt.Errorf("failed to list accounts: %w\n\nThis could be due to:\n1. Invalid AWS credentials\n2. Missing required IAM permissions (organizations:ListAccounts)\n3. Invalid AWS region configuration\n4. Network connectivity issues\n5. Role assumption failed or expired\n\nPlease check your AWS credentials and permissions.", err)
 		}
 
 		for _, account := range result.Accounts {

@@ -104,11 +104,19 @@ func (d *awsAccountDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		return
 	}
 
+	if d.client == nil {
+		resp.Diagnostics.AddError(
+			"Client Not Configured",
+			"Expected configured client but got nil. Please report this issue to the provider developers.",
+		)
+		return
+	}
+
 	accounts, err := d.client.GetAccountInfo(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading AWS Accounts",
-			"Could not read AWS accounts: "+err.Error(),
+			fmt.Sprintf("Could not read AWS accounts: %s\n\nThis could be due to:\n1. Invalid AWS credentials\n2. Missing required IAM permissions (organizations:ListAccounts)\n3. Invalid AWS region configuration\n4. Network connectivity issues\n\nPlease check your AWS credentials and permissions.", err.Error()),
 		)
 		return
 	}
