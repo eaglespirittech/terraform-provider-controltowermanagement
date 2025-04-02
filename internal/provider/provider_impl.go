@@ -34,7 +34,7 @@ func (p *controltowermanagementProvider) Schema(ctx context.Context, req provide
 				Attributes: map[string]schema.Attribute{
 					"role_arn": schema.StringAttribute{
 						Description: "ARN of the role to assume",
-						Required:    true,
+						Optional:    true,
 						Validators: []validator.String{
 							validators.RegexMatches(
 								regexp.MustCompile(`^arn:aws:iam::\d{12}:role/[a-zA-Z0-9_+=,.@-]+$`),
@@ -175,6 +175,11 @@ func (p *controltowermanagementProvider) Configure(ctx context.Context, req prov
 
 	// Handle assume role if configured
 	if config.AssumeRole != nil {
+		// Skip assume role if role_arn is not provided
+		if config.AssumeRole.RoleArn.IsNull() {
+			return
+		}
+
 		assumeRoleConfig := &client.AssumeRoleConfig{
 			RoleArn: config.AssumeRole.RoleArn.ValueString(),
 		}
