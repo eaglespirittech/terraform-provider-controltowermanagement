@@ -15,6 +15,8 @@ import (
 // Client represents the AWS client with assume role support
 type Client struct {
 	awsConfig aws.Config
+	orgClient OrganizationsAPI
+	stsClient STSAPI
 }
 
 // AssumeRoleConfig represents the configuration for assuming a role
@@ -50,7 +52,12 @@ func NewClient(accessKey, secretKey, region string) (*Client, error) {
 
 // AssumeRole assumes the specified IAM role and returns new credentials
 func (c *Client) AssumeRole(ctx context.Context, assumeRoleConfig *AssumeRoleConfig) error {
-	stsClient := sts.NewFromConfig(c.awsConfig)
+	var stsClient STSAPI
+	if c.stsClient != nil {
+		stsClient = c.stsClient
+	} else {
+		stsClient = sts.NewFromConfig(c.awsConfig)
+	}
 
 	input := &sts.AssumeRoleInput{
 		RoleArn:         aws.String(assumeRoleConfig.RoleArn),
@@ -111,7 +118,12 @@ func (c *Client) AssumeRole(ctx context.Context, assumeRoleConfig *AssumeRoleCon
 
 // GetAccountInfo retrieves information about AWS accounts from AWS Organizations
 func (c *Client) GetAccountInfo(ctx context.Context) ([]AccountInfo, error) {
-	orgClient := organizations.NewFromConfig(c.awsConfig)
+	var orgClient OrganizationsAPI
+	if c.orgClient != nil {
+		orgClient = c.orgClient
+	} else {
+		orgClient = organizations.NewFromConfig(c.awsConfig)
+	}
 
 	var accounts []AccountInfo
 	var nextToken *string
@@ -167,4 +179,14 @@ func (c *Client) SetSessionToken(token string) error {
 		token,
 	)
 	return nil
+}
+
+// OrganizationsAPI defines the interface for AWS Organizations operations
+type OrganizationsAPI interface {
+	ListAccounts(ctx context.Context, params *organizations.ListAccountsInput, optFns ...func(*organizations.Options)) (*organizations.ListAccountsOutput, error)
+}
+
+// STSAPI defines the interface for AWS STS operations
+type STSAPI interface {
+	AssumeRole(ctx context.Context, params *sts.AssumeRoleInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleOutput, error)
 }

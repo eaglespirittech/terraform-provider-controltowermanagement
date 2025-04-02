@@ -3,10 +3,13 @@ package client
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
-	"github.com/aws/aws-sdk-go-v2/service/organizations/types"
+	orgTypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	stsTypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -24,52 +27,98 @@ func (m *MockOrganizationsAPI) ListAccounts(ctx context.Context, params *organiz
 	return args.Get(0).(*organizations.ListAccountsOutput), args.Error(1)
 }
 
-func TestGetAccountInfo(t *testing.T) {
-	mockOrg := new(MockOrganizationsAPI)
+type mockOrganizationsClient struct {
+	ListAccountsFunc func(ctx context.Context, params *organizations.ListAccountsInput, optFns ...func(*organizations.Options)) (*organizations.ListAccountsOutput, error)
+}
 
-	// Test data
-	testAccounts := []types.Account{
-		{
-			Id:     aws.String("123456789012"),
-			Name:   aws.String("Test Account 1"),
-			Email:  aws.String("test1@example.com"),
-			Status: types.AccountStatusActive,
-		},
-		{
-			Id:     aws.String("098765432109"),
-			Name:   aws.String("Test Account 2"),
-			Email:  aws.String("test2@example.com"),
-			Status: types.AccountStatusActive,
+func (m *mockOrganizationsClient) ListAccounts(ctx context.Context, params *organizations.ListAccountsInput, optFns ...func(*organizations.Options)) (*organizations.ListAccountsOutput, error) {
+	if m.ListAccountsFunc != nil {
+		return m.ListAccountsFunc(ctx, params, optFns...)
+	}
+	return nil, nil
+}
+
+// MockSTSAPI is a mock implementation of the STS API
+type MockSTSAPI struct {
+	mock.Mock
+}
+
+func (m *MockSTSAPI) AssumeRole(ctx context.Context, params *sts.AssumeRoleInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleOutput, error) {
+	args := m.Called(ctx, params)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*sts.AssumeRoleOutput), args.Error(1)
+}
+
+func TestGetAccountInfo(t *testing.T) {
+	// Create a mock client that returns test data
+	mockClient := &mockOrganizationsClient{
+		ListAccountsFunc: func(ctx context.Context, params *organizations.ListAccountsInput, optFns ...func(*organizations.Options)) (*organizations.ListAccountsOutput, error) {
+			return &organizations.ListAccountsOutput{
+				Accounts: []orgTypes.Account{
+					{
+						Id:     aws.String("123456789012"),
+						Name:   aws.String("Test Account 1"),
+						Email:  aws.String("test1@example.com"),
+						Status: orgTypes.AccountStatusActive,
+					},
+					{
+						Id:     aws.String("098765432109"),
+						Name:   aws.String("Test Account 2"),
+						Email:  aws.String("test2@example.com"),
+						Status: orgTypes.AccountStatusActive,
+					},
+				},
+			}, nil
 		},
 	}
 
-	// Set up expectations
-	mockOrg.On("ListAccounts", mock.Anything, &organizations.ListAccountsInput{}).
-		Return(&organizations.ListAccountsOutput{
-			Accounts: testAccounts,
-		}, nil)
-
-	// Create test client
+	// Create a test client with the mock
 	testClient := &Client{
 		awsConfig: aws.Config{},
+		orgClient: mockClient,
 	}
 
-	// Execute test
+	// Get account info
 	accounts, err := testClient.GetAccountInfo(context.Background())
-
-	// Assertions
 	assert.NoError(t, err)
-	assert.Len(t, accounts, 2)
-	assert.Equal(t, "123456789012", accounts[0].AccountId)
-	assert.Equal(t, "Test Account 1", accounts[0].AccountName)
-	assert.Equal(t, "test1@example.com", accounts[0].Email)
-	assert.Equal(t, "ACTIVE", accounts[0].Status)
+	assert.NotNil(t, accounts)
+	assert.Greater(t, len(accounts), 0)
+
+	// Verify the first account's data
+	if len(accounts) > 0 {
+		assert.Equal(t, "123456789012", accounts[0].AccountId)
+		assert.Equal(t, "Test Account 1", accounts[0].AccountName)
+		assert.Equal(t, "test1@example.com", accounts[0].Email)
+		assert.Equal(t, "ACTIVE", accounts[0].Status)
+	}
 }
 
 func TestAssumeRole(t *testing.T) {
-	// Create test client
+	// Create mock STS client
+	mockSTS := new(MockSTSAPI)
+
+	// Set up test data
+	testCredentials := &stsTypes.Credentials{
+		AccessKeyId:     aws.String("test-access-key"),
+		SecretAccessKey: aws.String("test-secret-key"),
+		SessionToken:    aws.String("test-session-token"),
+		Expiration:      aws.Time(time.Now().Add(1 * time.Hour)),
+	}
+
+	// Set up expectations
+	mockSTS.On("AssumeRole", mock.Anything, mock.AnythingOfType("*sts.AssumeRoleInput")).
+		Return(&sts.AssumeRoleOutput{
+			Credentials: testCredentials,
+		}, nil)
+
+	// Create test client with region and mock STS client
 	testClient := &Client{
-		awsConfig: aws.Config{},
+		awsConfig: aws.Config{
+			Region: "us-west-2",
+		},
+		stsClient: mockSTS,
 	}
 
 	// Test assume role configuration
@@ -82,7 +131,14 @@ func TestAssumeRole(t *testing.T) {
 	// Execute test
 	err := testClient.AssumeRole(context.Background(), assumeRoleConfig)
 
-	// Note: This is a basic test that just verifies the function doesn't panic
-	// In a real test environment, you would mock the STS client and verify the credentials
+	// Verify
 	assert.NoError(t, err)
+	mockSTS.AssertExpectations(t)
+
+	// Verify credentials were updated
+	creds, err := testClient.awsConfig.Credentials.Retrieve(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, "test-access-key", creds.AccessKeyID)
+	assert.Equal(t, "test-secret-key", creds.SecretAccessKey)
+	assert.Equal(t, "test-session-token", creds.SessionToken)
 }
