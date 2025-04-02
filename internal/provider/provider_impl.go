@@ -28,29 +28,9 @@ func (p *controltowermanagementProvider) Metadata(ctx context.Context, req provi
 func (p *controltowermanagementProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: "Interact with Control Tower Management API.",
-		Attributes: map[string]schema.Attribute{
-			"access_key": schema.StringAttribute{
-				Description: "AWS Access Key ID. Can be set via AWS_ACCESS_KEY environment variable.",
-				Optional:    true,
-			},
-			"secret_key": schema.StringAttribute{
-				Description: "AWS Secret Access Key. Can be set via AWS_SECRET_ACCESS_KEY environment variable.",
-				Optional:    true,
-				Sensitive:   true,
-			},
-			"region": schema.StringAttribute{
-				Description: "AWS Region. Can be set via AWS_REGION environment variable.",
-				Optional:    true,
-				Validators: []validator.String{
-					validators.RegexMatches(
-						regexp.MustCompile(`^[a-z]{2}-[a-z]+-\d{1}$`),
-						"Region must be a valid AWS region (e.g., us-west-2)",
-					),
-				},
-			},
-			"assume_role": schema.SingleNestedAttribute{
+		Blocks: map[string]schema.Block{
+			"assume_role": schema.SingleNestedBlock{
 				Description: "Assume role configuration block",
-				Optional:    true,
 				Attributes: map[string]schema.Attribute{
 					"role_arn": schema.StringAttribute{
 						Description: "ARN of the role to assume",
@@ -93,6 +73,27 @@ func (p *controltowermanagementProvider) Schema(ctx context.Context, req provide
 						ElementType: types.StringType,
 						Optional:    true,
 					},
+				},
+			},
+		},
+		Attributes: map[string]schema.Attribute{
+			"access_key": schema.StringAttribute{
+				Description: "AWS Access Key ID. Can be set via AWS_ACCESS_KEY environment variable.",
+				Optional:    true,
+			},
+			"secret_key": schema.StringAttribute{
+				Description: "AWS Secret Access Key. Can be set via AWS_SECRET_ACCESS_KEY environment variable.",
+				Optional:    true,
+				Sensitive:   true,
+			},
+			"region": schema.StringAttribute{
+				Description: "AWS Region. Can be set via AWS_REGION environment variable.",
+				Optional:    true,
+				Validators: []validator.String{
+					validators.RegexMatches(
+						regexp.MustCompile(`^[a-z]{2}-[a-z]+-\d{1}$`),
+						"Region must be a valid AWS region (e.g., us-west-2)",
+					),
 				},
 			},
 		},
