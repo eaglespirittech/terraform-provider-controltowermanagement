@@ -218,26 +218,27 @@ func (p *controltowermanagementProvider) Configure(ctx context.Context, req prov
 			}
 		}
 
-		err = awsClient.AssumeRole(ctx, assumeRoleConfig)
-		if err != nil {
+		// Assume the role
+		if err := awsClient.AssumeRole(ctx, assumeRoleConfig); err != nil {
 			resp.Diagnostics.AddError(
 				"Failed to assume role",
-				"Error assuming role: "+err.Error()+"\nPlease check the role ARN and your permissions.",
+				"Error assuming role: "+err.Error(),
 			)
 			return
 		}
 	}
 
-	// Set the client in the provider's data source data
+	// Make the AWS client available during DataSource and Resource type Configure methods
 	resp.DataSourceData = awsClient
-}
-
-func (p *controltowermanagementProvider) Resources(ctx context.Context) []func() resource.Resource {
-	return []func() resource.Resource{}
+	resp.ResourceData = awsClient
 }
 
 func (p *controltowermanagementProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		NewAwsAccountDataSource,
 	}
+}
+
+func (p *controltowermanagementProvider) Resources(ctx context.Context) []func() resource.Resource {
+	return []func() resource.Resource{}
 }
