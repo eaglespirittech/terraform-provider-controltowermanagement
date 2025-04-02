@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set Up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+          cache: true
+
+      - name: Generate `go.sum` and Ensure Clean State
+        run: |
+          go mod tidy
+          git diff --exit-code || (echo "go.mod or go.sum changed. Commit your changes before releasing." && exit 1)
+
+      - name: Import GPG Key for Signing
+        id: import_gpg
+        uses: crazy-max/ghaction-import-gpg@v6.2.0
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.PASSPHRASE }}
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6.1.0
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
+
+      - name: Ensure Executable Permissions on Linux Binaries
+        run: |
+          find dist/ -type f -name "terraform-provider-controltowermanagement_*_linux_*" -exec chmod +x {} \;
