@@ -124,13 +124,13 @@ func (p *controltowermanagementProvider) Configure(ctx context.Context, req prov
 	}
 
 	// Validate required credentials
-	if config.AccessKey.ValueString() == "" {
+	if config.AccessKey.ValueString() == "" && config.AssumeRole == nil {
 		resp.Diagnostics.AddError(
-			"Missing AWS Access Key",
-			"Either set AWS_ACCESS_KEY/AWS_ACCESS_KEY_ID environment variable or provide access_key in provider configuration",
+			"Missing AWS Credentials",
+			"Either provide access_key/secret_key or assume_role configuration",
 		)
 	}
-	if config.SecretKey.ValueString() == "" {
+	if config.SecretKey.ValueString() == "" && config.AssumeRole == nil {
 		resp.Diagnostics.AddError(
 			"Missing AWS Secret Key",
 			"Either set AWS_SECRET_ACCESS_KEY environment variable or provide secret_key in provider configuration",
