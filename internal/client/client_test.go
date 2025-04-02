@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
 	orgTypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
@@ -74,9 +75,16 @@ func TestGetAccountInfo(t *testing.T) {
 		},
 	}
 
-	// Create a test client with the mock
+	// Create a test client with the mock and mock credentials
 	testClient := &Client{
-		awsConfig: aws.Config{},
+		awsConfig: aws.Config{
+			Region: "us-west-2",
+			Credentials: credentials.NewStaticCredentialsProvider(
+				"test-access-key",
+				"test-secret-key",
+				"test-session-token",
+			),
+		},
 		orgClient: mockClient,
 	}
 
@@ -107,16 +115,27 @@ func TestAssumeRole(t *testing.T) {
 		Expiration:      aws.Time(time.Now().Add(1 * time.Hour)),
 	}
 
+	testAssumedRoleUser := &stsTypes.AssumedRoleUser{
+		Arn:           aws.String("arn:aws:sts::123456789012:assumed-role/TestRole/test-session"),
+		AssumedRoleId: aws.String("AROATEST123456789012:test-session"),
+	}
+
 	// Set up expectations
 	mockSTS.On("AssumeRole", mock.Anything, mock.AnythingOfType("*sts.AssumeRoleInput")).
 		Return(&sts.AssumeRoleOutput{
-			Credentials: testCredentials,
+			Credentials:     testCredentials,
+			AssumedRoleUser: testAssumedRoleUser,
 		}, nil)
 
 	// Create test client with region and mock STS client
 	testClient := &Client{
 		awsConfig: aws.Config{
 			Region: "us-west-2",
+			Credentials: credentials.NewStaticCredentialsProvider(
+				"test-access-key",
+				"test-secret-key",
+				"test-session-token",
+			),
 		},
 		stsClient: mockSTS,
 	}
